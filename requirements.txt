@@ -1,0 +1,28 @@
+# Usage: pip install -r requirements.txt
+
+# Application & GUI ---------------------------
+customtkinter>=6.0.0
+Pillow>=7.1.2
+pyinstaller>=6.0.0
+
+# Computer Vision & Deep Learning -------------
+ultralytics>=8.0.0
+torch>=1.8.0
+torchvision>=0.9.0
+opencv-python>=4.7.0
+numpy>=1.23.0
+scipy>=1.4.1
+matplotlib>=3.2.2
+PyYAML>=5.3.1
+requests>=2.23.0
+tqdm>=4.41.0
+python-dotenv>=1.0.0
+psutil>=5.8.0
+
+# Logging & Extras ----------------------------
+tensorboard>=2.4.1
+pandas>=1.1.4
+seaborn>=0.11.0
+torchmetrics~=0.10.2
+telepot~=12.7
+black==24.8.0
