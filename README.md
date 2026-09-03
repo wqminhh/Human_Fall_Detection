@@ -1,88 +1,194 @@
-# AI Human Fall Detection & Alert System (YOLOv8 Pose)
+# AI Human Fall Detection System - YOLOv8 Pose
 
-Hệ thống nhận diện và cảnh báo té ngã ở người (Human Fall Detection System) theo thời gian thực sử dụng mô hình ước lượng tư thế **YOLOv8-Pose** kết hợp thuật toán phân tích động học tư thế (vận tốc trọng tâm, độ sụt trục Y và biến thiên tỉ lệ cơ thể). Hệ thống tích hợp giao diện người dùng máy tính (Desktop GUI) hiện đại và hỗ trợ đóng gói thành file thực thi độc lập (`.exe`) cho Windows.
+Du an nhan dien te nga o nguoi su dung **YOLOv8-Pose** de trich xuat khung xuong 17 keypoints, sau do ket hop logic phan tich tu the va chuyen dong de phan loai trang thai **Fall / Normal**. He thong ho tro chay real-time bang GUI, xu ly anh/video, va danh gia model bang script benchmark tu dong.
 
----
+## Model
 
-## 📌 Tính năng nổi bật
+Model chinh cua du an la:
 
-- 🎯 **Ước lượng tư thế YOLOv8 (17 Keypoints)**: Nhận diện khung xương người thời gian thực với độ chính xác cao.
-- ⚡ **Thuật toán phân tích té ngã thông minh**:
-  - Tốc độ sụt trọng tâm $v$ (`SpeedDrop`).
-  - Độ dịch chuyển trục dọc $\Delta y$ và biến thiên tỉ lệ dáng đứng sang nằm $\Delta AR$ (`DownFlat`, `SuddenDrop`).
-- 🖥️ **Giao diện Desktop GUI Hiện Đại (`app_gui.py`)**:
-  - Hỗ trợ 3 nguồn đầu vào: **Webcam trực tiếp**, **File video cục bộ** (`.mp4`, `.avi`, `.mov`, ...), và **Luồng RTSP/IP Camera**.
-  - Bảng cảnh báo trạng thái trực quan nhấp nháy đỏ (`🚨 CRITICAL ALERT: FALL DETECTED`).
-  - Âm thanh cảnh báo tự động và chụp ảnh lưu lại khoảnh khắc té ngã (`fall_snapshots/`).
-  - Thanh trượt điều chỉnh ngưỡng nhận diện trực tiếp trên giao diện.
-  - Bảng nhật ký sự kiện (Audit Log) theo thời gian thực.
-- 📦 **Đóng gói Windows Executable Độc Lập (`build_exe.py`)**:
-  - Sử dụng PyInstaller chế độ `--onedir` và `--windowed`.
-  - Tự động đóng gói model weights (`weights/yolov8n-pose.pt`) và assets cần thiết.
+```text
+weights/yolov8n-pose.pt
+```
 
----
+Pipeline nhan dien gom 2 tang:
 
-## 🚀 Hướng dẫn Cài đặt & Sử dụng
+1. **Pose Estimation - YOLOv8-Pose**
+   - Phat hien nguoi trong anh/video.
+   - Trich xuat 17 COCO keypoints: shoulders, hips, knees, ankles, etc.
+   - Tra ve bounding box, confidence va toa do keypoint theo tung frame.
 
-### 1. Cài đặt môi trường
+2. **Fall Classifier / FSM Logic**
+   - Phan tich tu the va chuyen dong cua nguoi dua tren keypoints.
+   - Dung normalized hip-drop velocity:
 
-```bash
+```text
+norm_v = (current_hip_y - previous_hip_y) / bbox_height
+```
+
+   - Dung body angle giua mid-shoulders va mid-hips:
+     - `angle < 30 deg`: than nguoi gan nam ngang, ho tro trang thai lying/fall.
+     - `angle > 60 deg` va van toc doc thap: xem la Normal.
+   - Neu hip keypoint co confidence thap hon `0.3`, pipeline fallback sang average Y cua left/right shoulders.
+
+Thay vi dung pixel drop tuyet doi, model hien tai dung ty le theo chieu cao bounding box. Cach nay giup ket qua on dinh hon voi nhieu do phan giai camera khac nhau.
+
+## Cach Su Dung Model
+
+### Cai Dat
+
+```powershell
 pip install -r requirements.txt
 ```
 
-### 2. Chạy ứng dụng Desktop GUI
+### Chay Ung Dung GUI
 
-Khởi chạy giao diện Desktop bằng lệnh:
-```bash
+```powershell
 python app_gui.py
 ```
-*(Hoặc nhấp đúp vào file `run_app.bat`)*
 
-### 3. Đóng gói ứng dụng thành file `.exe` cho Windows
+GUI su dung `YOLOv8FallDetector` trong `fall_core.py`, load model tu `weights/yolov8n-pose.pt`, sau do hien thi bounding box, skeleton, trang thai fall alert va audit log theo thoi gian thuc.
 
-**Bước 3.1: Đóng gói thành thư mục Portable (.exe) bằng PyInstaller**:
-```bash
-python build_exe.py
+### Chay Benchmark Tren Dataset Anh
+
+Dataset hien co trong repo:
+
+```text
+fall_dataset/images/
+  fall/      349 images
+  not-fall/  226 images
 ```
-*(Hoặc chạy file `build.bat`)*
 
-**Bước 3.2: Tạo file cài đặt Setup Wizard (.exe) bằng Inno Setup (Tùy chọn)**:
-Mở file [`setup_script.iss`](file:///d:/Human-Fall-Detection-master/Human-Fall-Detection-master/setup_script.iss) bằng phần mềm [Inno Setup Compiler](https://jrsoftware.org/isinfo.php) và nhấn `Compile` (Ctrl + F9) để xuất ra bộ cài đặt hoàn chỉnh `dist/FallDetectionApp_Setup_v1.0.exe`.
+Vi dataset nay la anh tinh, nen nen dung che do `--image-mode static`:
 
----
+```powershell
+python evaluate_model.py ".\fall_dataset\images" --label-set binary --image-mode static --conf 0.15 --static-fall-ar-thresh 0.75 --static-fall-score 2.0 --output-dir evaluation_results_static
+```
 
-## 📂 Cấu trúc thư mục dự án
+Ket qua se duoc luu tai:
+
+```text
+evaluation_results_static/confusion_matrix.png
+evaluation_results_static/predictions.csv
+```
+
+### Chay Benchmark Tren Video
+
+Voi video, can sap xep du lieu theo folder nhan:
+
+```text
+test_videos/
+  fall/
+    sample_01.mp4
+  not-fall/
+    sample_02.mp4
+```
+
+Lenh danh gia video:
+
+```powershell
+python evaluate_model.py ".\test_videos" --label-set binary --v-thresh 25 --dy-thresh 15 --output-dir evaluation_results_video
+```
+
+`--v-thresh 25` co nghia la nguong hip-drop khoang `25%` chieu cao co the trong cua so frame. Co the truyen `0.25` neu muon viet truc tiep theo ratio.
+
+## Ket Qua Model
+
+Benchmark hien tai duoc thuc hien tren `fall_dataset/images` voi 575 anh:
+
+```text
+Fall:     349 images
+Normal:   226 images
+Total:    575 images
+```
+
+### Static Image Mode
+
+Lenh benchmark:
+
+```powershell
+python evaluate_model.py ".\fall_dataset\images" --label-set binary --image-mode static --conf 0.15 --static-fall-ar-thresh 0.75 --static-fall-score 2.0 --output-dir evaluation_results_static
+```
+
+Ket qua:
+
+```text
+Accuracy:           77.74%
+Weighted F1-Score:  77.43%
+```
+
+Confusion matrix:
+
+| Ground Truth | Pred Fall | Pred Normal |
+| --- | ---: | ---: |
+| Fall | 299 | 50 |
+| Normal | 78 | 148 |
+
+Per-class metrics:
+
+| Class | Precision | Recall | F1-Score | Support |
+| --- | ---: | ---: | ---: | ---: |
+| Fall | 79.31% | 85.67% | 82.37% | 349 |
+| Normal | 74.75% | 65.49% | 69.81% | 226 |
+
+### FSM/Evaluation Baseline
+
+Ket qua benchmark luu trong `evaluation_results`:
+
+```text
+Accuracy:           73.22%
+Weighted F1-Score:  73.53%
+```
+
+Confusion matrix:
+
+| Ground Truth | Pred Fall | Pred Normal |
+| --- | ---: | ---: |
+| Fall | 244 | 105 |
+| Normal | 49 | 177 |
+
+Ket qua cho thay che do static phu hop hon voi dataset anh tinh, trong khi FSM phu hop hon voi video/real-time vi can lich su nhieu frame de tinh chuyen dong roi.
+
+## Cau Truc Du An
 
 ```text
 Human-Fall-Detection/
-├── app_gui.py              # Giao diện Desktop GUI (CustomTkinter + YOLOv8)
-├── app_icon.ico            # Biểu tượng Icon ứng dụng đa độ phân giải
-├── setup_script.iss        # Script Inno Setup tạo file cài đặt Windows Installer
-├── build_exe.py            # Script tự động đóng gói PyInstaller (.exe)
-├── build.bat               # File batch tự động đóng gói PyInstaller
-├── run_app.bat             # File khởi chạy nhanh ứng dụng trên Windows
-├── fall_core.py            # Bộ xử lý YOLOv8-pose và thuật toán phát hiện té ngã
-├── utils.py                # Tiện ích giải quyết đường dẫn tài nguyên & âm thanh cảnh báo
-├── requirements.txt        # Danh sách thư viện phụ thuộc
-├── weights/                # Thư mục chứa trọng số mô hình (.pt)
-│   └── yolov8n-pose.pt     # Trọng số mô hình YOLOv8 Pose
-├── dist/                   # Thư mục chứa file thực thi sau khi đóng gói
-│   └── FallDetectionApp/   # Ứng dụng Desktop chạy độc lập (.exe)
-├── realtime.py             # Script nhận diện qua webcam (CLI)
-├── video.py                # Script xử lý video hàng loạt (CLI)
-└── fall_snapshots/         # Ảnh chụp tự động khi phát hiện sự cố ngã
+  app_gui.py                         GUI desktop real-time
+  fall_core.py                       YOLOv8-Pose + fall detection logic
+  evaluate_model.py                  Evaluation and benchmark script
+  requirements.txt                   Python dependencies
+  weights/
+    yolov8n-pose.pt                  YOLOv8 pose model weights
+  fall_dataset/
+    images/
+      fall/
+      not-fall/
+  evaluation_results/
+    confusion_matrix.png
+    predictions.csv
+  evaluation_results_static/
+    confusion_matrix.png
+    predictions.csv
 ```
 
----
+## Tham So Quan Trong
 
-## ⚙️ Tùy chỉnh tham số nhận diện
+| Tham so | Y nghia | Gia tri goi y |
+| --- | --- | --- |
+| `conf_thresh` / `--conf` | Nguong confidence cua YOLOv8-Pose | `0.15 - 0.35` |
+| `v_thresh` / `--v-thresh` | Nguong hip-drop normalized theo body height | `25` hoac `0.25` |
+| `dy_thresh` / `--dy-thresh` | Nguong drop phu, cung normalized | `15` hoac `0.15` |
+| `ar_thresh` / `--ar-thresh` | Nguong thay doi aspect ratio | `0.25 - 0.35` |
+| `--static-fall-ar-thresh` | Nguong width/height cho anh tinh | `0.65 - 0.85` |
+| `--static-fall-score` | Diem heuristic toi thieu de gan nhan Fall | `1.8 - 2.2` |
 
-Bạn có thể tinh chỉnh trực tiếp trên thanh trượt của GUI hoặc qua file [`config.py`](file:///d:/Human-Fall-Detection-master/Human-Fall-Detection-master/config.py):
+## Huong Nang Cap Model
 
-| Tham số | Mặc định | Ý nghĩa |
-| :--- | :---: | :--- |
-| `v_thresh` | `55.0 px/s` | Ngưỡng vận tốc sụt trọng tâm |
-| `dy_thresh` | `18.0 px` | Ngưỡng dịch chuyển đi xuống theo trục Y |
-| `ar_thresh` | `0.35` | Ngưỡng biến thiên tỉ lệ cơ thể (ngang/dọc) |
-| `conf_thresh` | `0.35` | Độ tin cậy nhận diện tư thế người |
-| `window_size` | `15 frames` | Số frame trong cửa sổ trượt phân tích |
+- Dung model pose lon hon de tang chat luong keypoints:
+
+```powershell
+python evaluate_model.py ".\fall_dataset\images" --model yolov8s-pose.pt --label-set binary --image-mode static --conf 0.15 --static-fall-ar-thresh 0.75 --static-fall-score 2.0 --output-dir evaluation_results_yolov8s
+```
+
+- Bo sung video test co nhan `fall/not-fall` de danh gia dung FSM temporal.
+- Train them classifier rieng tren feature keypoints, vi YOLOv8-Pose hien tai chi la pose estimator, con fall decision la logic classifier/FSM cua du an.
+- Can bang lai dataset, vi tap hien tai co nhieu anh Fall hon Normal.
