@@ -84,12 +84,18 @@ class YOLOv8PersonTracker:
         self.last_update = time.time()
         com = self.compute_center_of_mass(keypoints, bbox)
         ar = self.compute_aspect_ratio(keypoints, bbox)
+        posture_y = self.compute_hip_y_with_fallback(keypoints, bbox)
+        body_angle = self.compute_body_angle(keypoints)
+        bbox_height = self.compute_bbox_height(bbox)
         self.history.append(
             {
                 "keypoints": keypoints,
                 "bbox": bbox,
                 "com": com,
                 "ar": ar,
+                "posture_y": posture_y,
+                "body_angle": body_angle,
+                "bbox_height": bbox_height,
                 "time": self.last_update,
                 "conf": conf,
             }
@@ -153,12 +159,92 @@ class YOLOv8PersonTracker:
 
         return 0.0
 
+    def compute_bbox_height(self, bbox: np.ndarray) -> float:
+        if bbox is not None and len(bbox) == 4:
+            return max(1.0, float(bbox[3] - bbox[1]))
+        return 1.0
+
+    def get_valid_keypoint(
+        self, keypoints: np.ndarray, idx: int, conf_thresh: float = 0.3
+    ):
+        if keypoints is None or len(keypoints) <= idx:
+            return None
+
+        pt = keypoints[idx]
+        conf = pt[2] if len(pt) >= 3 else 1.0
+        if conf < conf_thresh or pt[0] <= 0 or pt[1] <= 0:
+            return None
+        return np.array([float(pt[0]), float(pt[1])])
+
+    def average_keypoints(
+        self, keypoints: np.ndarray, indices: list, conf_thresh: float = 0.3
+    ):
+        points = [
+            self.get_valid_keypoint(keypoints, idx, conf_thresh)
+            for idx in indices
+        ]
+        points = [pt for pt in points if pt is not None]
+        if not points:
+            return None
+        return np.mean(points, axis=0)
+
+    def compute_hip_y_with_fallback(
+        self, keypoints: np.ndarray, bbox: np.ndarray
+    ) -> float:
+        """
+        Use mid-hip Y as the vertical position. If hip confidence is weak,
+        fall back to mid-shoulder Y, then bbox center Y.
+        """
+        left_hip = self.get_valid_keypoint(keypoints, 11, conf_thresh=0.3)
+        right_hip = self.get_valid_keypoint(keypoints, 12, conf_thresh=0.3)
+        if left_hip is not None and right_hip is not None:
+            return float(np.mean([left_hip[1], right_hip[1]]))
+
+        shoulders = self.average_keypoints(keypoints, [5, 6], conf_thresh=0.3)
+        if shoulders is not None:
+            return float(shoulders[1])
+
+        if bbox is not None and len(bbox) == 4:
+            return float((bbox[1] + bbox[3]) / 2.0)
+
+        return 0.0
+
+    def compute_body_angle(self, keypoints: np.ndarray):
+        """
+        Angle between mid-shoulders and mid-hips relative to horizontal.
+        0 degrees is horizontal/lying; 90 degrees is upright/vertical.
+        """
+        shoulders = self.average_keypoints(keypoints, [5, 6], conf_thresh=0.3)
+        hips = self.average_keypoints(keypoints, [11, 12], conf_thresh=0.3)
+        if shoulders is None or hips is None:
+            return None
+
+        dx = float(hips[0] - shoulders[0])
+        dy = float(hips[1] - shoulders[1])
+        if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+            return None
+
+        angle = abs(math.degrees(math.atan2(dy, dx)))
+        return min(angle, 180.0 - angle)
+
+    def normalize_ratio_threshold(self, value: float, default_ratio: float) -> float:
+        """
+        Keep backward compatibility with existing controls:
+        0.25 means 25%, and 25/30/55 mean 25%/30%/55% body height.
+        """
+        if value is None:
+            return default_ratio
+        value = float(value)
+        if value <= 0:
+            return default_ratio
+        return value if value <= 1.0 else value / 100.0
+
     def check_fall(self):
         """
         Evaluate temporal cues for fall detection:
-        - Downward velocity of center of mass
-        - Change in aspect ratio (vertical to horizontal orientation)
-        - Net downward displacement (dy)
+        - Normalized hip/shoulder drop relative to body height
+        - Change in aspect ratio from upright to horizontal
+        - Body angle relative to the horizontal axis
         """
         if not self.is_ready():
             return False, None, "Buffering...", ""
@@ -171,31 +257,66 @@ class YOLOv8PersonTracker:
         dy = float(c2[1] - c1[1])  # Positive dy is moving downward in image space
         dist = math.sqrt(dx**2 + dy**2)
 
-        # Time elapsed
         dt = max(0.01, float(last["time"] - first["time"]))
         v = min(dist / dt, 500.0)
 
         ar_start = first["ar"]
         ar_end = last["ar"]
         ar_delta = ar_end - ar_start
+        bbox_height = max(
+            1.0,
+            float(first.get("bbox_height", 1.0)),
+            float(last.get("bbox_height", 1.0)),
+        )
+        hip_drop = float(
+            last.get("posture_y", c2[1]) - first.get("posture_y", c1[1])
+        )
+        norm_v = hip_drop / bbox_height
+        norm_v_thresh = self.normalize_ratio_threshold(self.v_thresh, 0.25)
+        norm_dy_thresh = self.normalize_ratio_threshold(self.dy_thresh, 0.15)
+        body_angle = last.get("body_angle")
+        is_horizontal = body_angle is not None and body_angle < 30.0
+        is_upright_stable = (
+            body_angle is not None
+            and body_angle > 60.0
+            and norm_v < max(0.08, norm_v_thresh * 0.5)
+        )
 
         tags = []
-        # Rule 1: High downward velocity with body staying horizontal/expanded
-        if v > self.v_thresh and dy > self.dy_thresh and ar_end > 0.3:
-            tags.append("SpeedDrop")
+        if is_upright_stable:
+            angle_text = f"{body_angle:.1f}"
+            debug_info = (
+                f"norm_v={norm_v:.2f}/{norm_v_thresh:.2f}, "
+                f"norm_dy={norm_v:.2f}/{norm_dy_thresh:.2f}, "
+                f"angle={angle_text}, AR={ar_end:.2f} (d={ar_delta:+.2f})"
+            )
+            self.is_falling = False
+            self.fall_reason = ""
+            return False, last["bbox"], debug_info, ""
 
-        # Rule 2: Sudden change from upright to horizontal with downward descent
-        if dy > self.dy_thresh and ar_delta > self.ar_thresh:
+        # Rule 1: Resolution-independent downward hip drop.
+        if norm_v > norm_v_thresh and ar_end > 0.3:
+            tags.append("NormHipDrop")
+
+        # Rule 2: Sudden change from upright to horizontal with downward descent.
+        if norm_v > norm_dy_thresh and ar_delta > self.ar_thresh:
             tags.append("DownFlat")
 
-        # Rule 3: High speed descent accompanied by posture shift
-        if v > (self.v_thresh * 1.2) and ar_end > 0.8:
-            tags.append("SuddenDrop")
+        # Rule 3: Body is nearly horizontal, confirming lying/fall posture.
+        if is_horizontal and (norm_v > norm_dy_thresh or ar_end > 0.8):
+            tags.append("BodyHorizontal")
 
         debug_info = (
             f"v={v:.1f}/{self.v_thresh:.1f}, "
             f"dy={dy:.1f}/{self.dy_thresh:.1f}, "
             f"AR={ar_end:.2f} (Δ={ar_delta:+.2f})"
+        )
+
+        angle_text = "n/a" if body_angle is None else f"{body_angle:.1f}"
+        debug_info = (
+            f"norm_v={norm_v:.2f}/{norm_v_thresh:.2f}, "
+            f"norm_dy={norm_v:.2f}/{norm_dy_thresh:.2f}, "
+            f"angle={angle_text}, AR={ar_end:.2f} (d={ar_delta:+.2f})"
         )
 
         if len(tags) > 0:
