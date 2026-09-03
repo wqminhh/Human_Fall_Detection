@@ -1,56 +1,60 @@
 # AI Human Fall Detection System - YOLOv8 Pose
 
-Du an nhan dien te nga o nguoi su dung **YOLOv8-Pose** de trich xuat khung xuong 17 keypoints, sau do ket hop logic phan tich tu the va chuyen dong de phan loai trang thai **Fall / Normal**. He thong ho tro chay real-time bang GUI, xu ly anh/video, va danh gia model bang script benchmark tu dong.
+Dự án nhận diện té ngã ở người sử dụng **YOLOv8-Pose** để trích xuất khung xương 17 keypoints, sau đó kết hợp logic phân tích tư thế và chuyển động để phân loại trạng thái **Fall / Normal**. Hệ thống hỗ trợ chạy real-time bằng GUI, xử lý ảnh/video, và đánh giá model bằng script benchmark tự động.
+
+---
 
 ## Model
 
-Model chinh cua du an la:
+Model chính của dự án là:
 
 ```text
 weights/yolov8n-pose.pt
 ```
 
-Pipeline nhan dien gom 2 tang:
+Pipeline nhận diện gồm 2 tầng:
 
 1. **Pose Estimation - YOLOv8-Pose**
-   - Phat hien nguoi trong anh/video.
-   - Trich xuat 17 COCO keypoints: shoulders, hips, knees, ankles, etc.
-   - Tra ve bounding box, confidence va toa do keypoint theo tung frame.
+   - Phát hiện người trong ảnh/video.
+   - Trích xuất 17 COCO keypoints: vai, hông, đầu gối, cổ chân, v.v.
+   - Trả về bounding box, độ tin cậy (confidence) và tọa độ keypoint theo từng frame.
 
 2. **Fall Classifier / FSM Logic**
-   - Phan tich tu the va chuyen dong cua nguoi dua tren keypoints.
-   - Dung normalized hip-drop velocity:
+   - Phân tích tư thế và chuyển động của người dựa trên keypoints.
+   - Dùng normalized hip-drop velocity (vận tốc rơi của hông đã chuẩn hóa):
 
 ```text
 norm_v = (current_hip_y - previous_hip_y) / bbox_height
 ```
 
-   - Dung body angle giua mid-shoulders va mid-hips:
-     - `angle < 30 deg`: than nguoi gan nam ngang, ho tro trang thai lying/fall.
-     - `angle > 60 deg` va van toc doc thap: xem la Normal.
-   - Neu hip keypoint co confidence thap hon `0.3`, pipeline fallback sang average Y cua left/right shoulders.
+   - Dùng body angle (góc nghiêng thân mình) giữa mid-shoulders và mid-hips:
+     - `angle < 30 deg`: thân người gần nằm ngang, hỗ trợ xác định trạng thái nằm/ngã (lying/fall).
+     - `angle > 60 deg` và vận tốc dọc thấp: được xem là Bình thường (Normal).
+   - Nếu hip keypoint có độ tin cậy thấp hơn `0.3`, pipeline sẽ chuyển sang cơ chế dự phòng (fallback) lấy trung bình tọa độ Y của vai trái/phải.
 
-Thay vi dung pixel drop tuyet doi, model hien tai dung ty le theo chieu cao bounding box. Cach nay giup ket qua on dinh hon voi nhieu do phan giai camera khac nhau.
+Thay vì dùng khoảng cách rơi pixel tuyệt đối, model hiện tại dùng tỷ lệ theo chiều cao bounding box. Cách này giúp kết quả ổn định hơn trên nhiều độ phân giải camera khác nhau.
 
-## Cach Su Dung Model
+---
 
-### Cai Dat
+## Cách Sử Dụng Model
+
+### Cài Đặt
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-### Chay Ung Dung GUI
+### Chạy Ứng Dụng GUI
 
 ```powershell
 python app_gui.py
 ```
 
-GUI su dung `YOLOv8FallDetector` trong `fall_core.py`, load model tu `weights/yolov8n-pose.pt`, sau do hien thi bounding box, skeleton, trang thai fall alert va audit log theo thoi gian thuc.
+GUI sử dụng `YOLOv8FallDetector` trong `fall_core.py`, load model từ `weights/yolov8n-pose.pt`, sau đó hiển thị bounding box, khung xương (skeleton), trạng thái cảnh báo té ngã (fall alert) và nhật ký sự kiện (audit log) theo thời gian thực.
 
-### Chay Benchmark Tren Dataset Anh
+### Chạy Benchmark Trên Dataset Ảnh
 
-Dataset hien co trong repo:
+Dataset hiện có trong repository:
 
 ```text
 fall_dataset/images/
@@ -58,22 +62,22 @@ fall_dataset/images/
   not-fall/  226 images
 ```
 
-Vi dataset nay la anh tinh, nen nen dung che do `--image-mode static`:
+Vì dataset này là ảnh tĩnh, nên sử dụng chế độ `--image-mode static`:
 
 ```powershell
 python evaluate_model.py ".\fall_dataset\images" --label-set binary --image-mode static --conf 0.15 --static-fall-ar-thresh 0.75 --static-fall-score 2.0 --output-dir evaluation_results_static
 ```
 
-Ket qua se duoc luu tai:
+Kết quả sẽ được lưu tại:
 
 ```text
 evaluation_results_static/confusion_matrix.png
 evaluation_results_static/predictions.csv
 ```
 
-### Chay Benchmark Tren Video
+### Chạy Benchmark Trên Video
 
-Voi video, can sap xep du lieu theo folder nhan:
+Với video, cần sắp xếp dữ liệu theo các thư mục nhãn:
 
 ```text
 test_videos/
@@ -83,17 +87,19 @@ test_videos/
     sample_02.mp4
 ```
 
-Lenh danh gia video:
+Lệnh đánh giá video:
 
 ```powershell
 python evaluate_model.py ".\test_videos" --label-set binary --v-thresh 25 --dy-thresh 15 --output-dir evaluation_results_video
 ```
 
-`--v-thresh 25` co nghia la nguong hip-drop khoang `25%` chieu cao co the trong cua so frame. Co the truyen `0.25` neu muon viet truc tiep theo ratio.
+`--v-thresh 25` có nghĩa là ngưỡng hip-drop khoảng `25%` chiều cao cơ thể trong cửa sổ frame. Có thể truyền `0.25` nếu muốn viết trực tiếp theo dạng tỷ lệ (ratio).
 
-## Ket Qua Model
+---
 
-Benchmark hien tai duoc thuc hien tren `fall_dataset/images` voi 575 anh:
+## Kết Quả Model
+
+Benchmark hiện tại được thực hiện trên `fall_dataset/images` với 575 ảnh:
 
 ```text
 Fall:     349 images
@@ -103,27 +109,27 @@ Total:    575 images
 
 ### Static Image Mode
 
-Lenh benchmark:
+Lệnh benchmark:
 
 ```powershell
 python evaluate_model.py ".\fall_dataset\images" --label-set binary --image-mode static --conf 0.15 --static-fall-ar-thresh 0.75 --static-fall-score 2.0 --output-dir evaluation_results_static
 ```
 
-Ket qua:
+Kết quả:
 
 ```text
 Accuracy:           77.74%
 Weighted F1-Score:  77.43%
 ```
 
-Confusion matrix:
+Confusion matrix (Ma trận nhầm lẫn):
 
 | Ground Truth | Pred Fall | Pred Normal |
 | --- | ---: | ---: |
 | Fall | 299 | 50 |
 | Normal | 78 | 148 |
 
-Per-class metrics:
+Per-class metrics (Chỉ số chi tiết theo lớp):
 
 | Class | Precision | Recall | F1-Score | Support |
 | --- | ---: | ---: | ---: | ---: |
@@ -132,23 +138,25 @@ Per-class metrics:
 
 ### FSM/Evaluation Baseline
 
-Ket qua benchmark luu trong `evaluation_results`:
+Kết quả benchmark lưu trong `evaluation_results`:
 
 ```text
 Accuracy:           73.22%
 Weighted F1-Score:  73.53%
 ```
 
-Confusion matrix:
+Confusion matrix (Ma trận nhầm lẫn):
 
 | Ground Truth | Pred Fall | Pred Normal |
 | --- | ---: | ---: |
 | Fall | 244 | 105 |
 | Normal | 49 | 177 |
 
-Ket qua cho thay che do static phu hop hon voi dataset anh tinh, trong khi FSM phu hop hon voi video/real-time vi can lich su nhieu frame de tinh chuyen dong roi.
+Kết quả cho thấy chế độ static phù hợp hơn với dataset ảnh tĩnh, trong khi FSM phù hợp hơn với video/real-time vì cần lịch sử nhiều frame để tính toán chuyển động rơi.
 
-## Cau Truc Du An
+---
+
+## Cấu Trúc Dự Án
 
 ```text
 Human-Fall-Detection/
@@ -170,25 +178,29 @@ Human-Fall-Detection/
     predictions.csv
 ```
 
-## Tham So Quan Trong
+---
 
-| Tham so | Y nghia | Gia tri goi y |
+## Tham Số Quan Trọng
+
+| Tham số | Ý nghĩa | Giá trị gợi ý |
 | --- | --- | --- |
-| `conf_thresh` / `--conf` | Nguong confidence cua YOLOv8-Pose | `0.15 - 0.35` |
-| `v_thresh` / `--v-thresh` | Nguong hip-drop normalized theo body height | `25` hoac `0.25` |
-| `dy_thresh` / `--dy-thresh` | Nguong drop phu, cung normalized | `15` hoac `0.15` |
-| `ar_thresh` / `--ar-thresh` | Nguong thay doi aspect ratio | `0.25 - 0.35` |
-| `--static-fall-ar-thresh` | Nguong width/height cho anh tinh | `0.65 - 0.85` |
-| `--static-fall-score` | Diem heuristic toi thieu de gan nhan Fall | `1.8 - 2.2` |
+| `conf_thresh` / `--conf` | Ngưỡng confidence của YOLOv8-Pose | `0.15 - 0.35` |
+| `v_thresh` / `--v-thresh` | Ngưỡng hip-drop normalized theo body height | `25` hoặc `0.25` |
+| `dy_thresh` / `--dy-thresh` | Ngưỡng drop phụ, cũng được normalized | `15` hoặc `0.15` |
+| `ar_thresh` / `--ar-thresh` | Ngưỡng thay đổi aspect ratio | `0.25 - 0.35` |
+| `--static-fall-ar-thresh` | Ngưỡng width/height cho ảnh tĩnh | `0.65 - 0.85` |
+| `--static-fall-score` | Điểm heuristic tối thiểu để gán nhãn Fall | `1.8 - 2.2` |
 
-## Huong Nang Cap Model
+---
 
-- Dung model pose lon hon de tang chat luong keypoints:
+## Hướng Nâng Cấp Model
+
+- Dùng model pose lớn hơn để tăng chất lượng trích xuất keypoints:
 
 ```powershell
 python evaluate_model.py ".\fall_dataset\images" --model yolov8s-pose.pt --label-set binary --image-mode static --conf 0.15 --static-fall-ar-thresh 0.75 --static-fall-score 2.0 --output-dir evaluation_results_yolov8s
 ```
 
-- Bo sung video test co nhan `fall/not-fall` de danh gia dung FSM temporal.
-- Train them classifier rieng tren feature keypoints, vi YOLOv8-Pose hien tai chi la pose estimator, con fall decision la logic classifier/FSM cua du an.
-- Can bang lai dataset, vi tap hien tai co nhieu anh Fall hon Normal.
+- Bổ sung video test có nhãn `fall/not-fall` để đánh giá đúng FSM temporal.
+- Huấn luyện thêm classifier riêng trên đặc trưng keypoints, vì YOLOv8-Pose hiện tại chỉ đóng vai trò là pose estimator, còn quyết định té ngã là do logic classifier/FSM của dự án.
+- Cân bằng lại dataset, vì tập hiện tại có nhiều ảnh Fall hơn Normal.
