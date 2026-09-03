@@ -149,7 +149,7 @@ class FallDetectionGUI(ctk.CTk):
 
         self.title_label = ctk.CTkLabel(
             self.header_frame,
-            text="🛡️ AI Human Fall Detection System",
+            text=" AI Human Fall Detection System",
             font=ctk.CTkFont(size=20, weight="bold"),
         )
         self.title_label.grid(row=0, column=0, padx=16, pady=12, sticky="w")
