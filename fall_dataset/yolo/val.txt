@@ -1,0 +1,85 @@
+val/fall/2018-07-04T12_06_22-885278_cropped_0.png
+val/fall/2018-07-04T12_06_23-202125_cropped_1.png
+val/fall/2018-07-04T12_06_24_cropped_1.jpg
+val/fall/2018-07-04T12_07_23-435529_cropped_0.png
+val/fall/2018-07-04T12_07_23-486666_cropped_0.png
+val/fall/28_cropped_0.jpg
+val/fall/50_cropped_0.jpg
+val/fall/59_cropped_0.jpg
+val/fall/67_cropped_0.jpg
+val/fall/70_cropped_0.jpg
+val/fall/82_cropped_0.jpg
+val/fall/91_cropped_0.jpg
+val/fall/92_cropped_0.jpg
+val/fall/94_cropped_0.jpg
+val/fall/download (1)_cropped_0.jpg
+val/fall/download_cropped_0.jpg
+val/fall/fall-02-cam1-rgb-083_cropped_0.jpg
+val/fall/fall-02-cam1-rgb-083_cropped_0.png
+val/fall/fall-03-cam0-rgb-172_cropped_0.jpg
+val/fall/fall-03-cam1-rgb-178_cropped_0.png
+val/fall/fall-04-cam0-rgb-053_cropped_0.png
+val/fall/fall-04-cam1-rgb-038_cropped_0.jpg
+val/fall/fall-06-cam0-rgb-038_cropped_0.jpg
+val/fall/fall-06-cam0-rgb-053_cropped_0.png
+val/fall/fall-07-cam1-rgb-110_cropped_0.jpg
+val/fall/fall-07-cam1-rgb-132_cropped_0.png
+val/fall/fall-08-cam0-rgb-059_cropped_0.jpg
+val/fall/fall-08-cam0-rgb-059_cropped_0.png
+val/fall/fall-08-cam0-rgb-084_cropped_0.png
+val/fall/fall-09-cam1-rgb-158_cropped_0.png
+val/fall/fall-11-cam1-rgb-079_cropped_0.png
+val/fall/fall-20-cam0-rgb-059_cropped_0.png
+val/fall/fall-20-cam1-rgb-040_cropped_0.png
+val/fall/fall-20-cam1-rgb-048_cropped_0.png
+val/fall/gettyimages-136811202-612x612_cropped_0.jpg
+val/fall/gettyimages-138341313-612x612_cropped_0.jpg
+val/fall/images (15)_cropped_0.jpg
+val/fall/images (18)_cropped_0.jpeg
+val/fall/images (19)_cropped_0.jpg
+val/fall/images (25)_cropped_0.jpg
+val/fall/images_cropped_0.jpg
+val/fall/split10_029_cropped_0.png
+val/fall/split11_001_cropped_0.jpg
+val/fall/split11_093_cropped_0.png
+val/fall/split11_1038_cropped_0.png
+val/fall/split11_175_cropped_0.png
+val/fall/split11_2080_cropped_0.jpg
+val/fall/split11_2098_cropped_0.jpg
+val/fall/split11_537_cropped_0.png
+val/fall/split11_696_cropped_0.png
+val/fall/split11_741_cropped_0.png
+val/fall/split11_993_cropped_0.png
+val/not-fall/0_Portrait-of-a-senior-man-indoor_cropped_0.jpg
+val/not-fall/2018-07-04T12_04_21_cropped_1.jpg
+val/not-fall/2018-07-04T12_06_23-822832_cropped_0.png
+val/not-fall/2018-07-04T12_07_23-486666_cropped_1.png
+val/not-fall/2018-07-04T12_07_24_cropped_0.jpg
+val/not-fall/3006_cropped_0.jpg
+val/not-fall/3013_cropped_1.jpg
+val/not-fall/3014_cropped_0.jpg
+val/not-fall/3021_cropped_2.jpg
+val/not-fall/3025_cropped_1.jpg
+val/not-fall/3034_cropped_0.jpg
+val/not-fall/3038_cropped_4.jpg
+val/not-fall/3045_cropped_1.jpg
+val/not-fall/3046_cropped_0.jpg
+val/not-fall/3048_cropped_0.jpg
+val/not-fall/3051_cropped_0.jpg
+val/not-fall/3052_cropped_0.jpg
+val/not-fall/3055_cropped_0.jpg
+val/not-fall/3056_cropped_0.jpg
+val/not-fall/download (2)_cropped_0.jpeg
+val/not-fall/fall_img_4_cropped_0.png
+val/not-fall/gettyimages-1134648986-612x612_cropped_0.jpg
+val/not-fall/images (1)_cropped_0.jpeg
+val/not-fall/images (20)_cropped_0.jpeg
+val/not-fall/images (22)_cropped_0.jpeg
+val/not-fall/images (9)_cropped_0.jpeg
+val/not-fall/person-face2_cropped_0.jpg
+val/not-fall/rgb_0046_cropped_0.png
+val/not-fall/rgb_0108_cropped_0.png
+val/not-fall/rgb_0119_cropped_0.png
+val/not-fall/rgb_0160_cropped_0.png
+val/not-fall/rgb_0534_cropped_0.png
+val/not-fall/rgb_0570_cropped_0.png

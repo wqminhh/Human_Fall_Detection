@@ -36,6 +36,10 @@ import numpy as np
 from PIL import Image, ImageTk
 import customtkinter as ctk
 
+APP_NAME = "AI Human Fall Detection System"
+APP_VERSION = "1.2.0"
+APP_EXE_NAME = "FallDetectionApp.exe"
+
 # Safeguard against PyInstaller / Headless OpenCV missing GUI attributes required by Ultralytics
 for _attr, _default_fn in [
     ("imshow", lambda *args, **kwargs: None),
@@ -57,9 +61,39 @@ from utils.resource import (
     save_fall_snapshot,
 )
 
-# Configure CustomTkinter Theme
-ctk.set_appearance_mode("dark")  # "dark" or "light"
-ctk.set_default_color_theme("blue")  # "blue", "dark-blue", "green"
+# ── Palette ────────────────────────────────────────────────────────────────────
+CLR_BG        = "#111318"   # root background
+CLR_CARD      = "#1a1d24"   # card / panel background
+CLR_CARD2     = "#20242e"   # slightly lighter card
+CLR_BORDER    = "#2a2f3d"   # subtle border / divider
+CLR_ACCENT    = "#4f8ef7"   # primary accent (blue)
+CLR_ACCENT2   = "#364fc7"   # accent hover
+CLR_GREEN     = "#2d9e5f"   # running / normal state
+CLR_GREEN_BG  = "#0d2a1c"
+CLR_RED       = "#e03131"   # danger / fall alert
+CLR_RED_BG    = "#2a0d0d"
+CLR_AMBER     = "#f59f00"   # pause state
+CLR_MUTED     = "#6c7693"   # secondary text
+CLR_TEXT      = "#dde3f0"   # primary text
+
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+
+def _section_label(parent, text: str, **kwargs) -> ctk.CTkLabel:
+    """Uniform section header label."""
+    return ctk.CTkLabel(
+        parent,
+        text=text,
+        font=ctk.CTkFont(size=11, weight="bold"),
+        text_color=CLR_MUTED,
+        **kwargs,
+    )
+
+
+def _divider(parent) -> ctk.CTkFrame:
+    """Thin horizontal rule."""
+    return ctk.CTkFrame(parent, height=1, fg_color=CLR_BORDER, corner_radius=0)
 
 
 class FallDetectionGUI(ctk.CTk):
@@ -67,9 +101,10 @@ class FallDetectionGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("AI Human Fall Detection System - YOLOv8 Pose")
-        self.geometry("1280x820")
+        self.title(f"{APP_NAME} {APP_VERSION}  ·  YOLOv8 Pose")
+        self.geometry("1300x840")
         self.minsize(1050, 700)
+        self.configure(fg_color=CLR_BG)
 
         # Set Window Icon if available
         icon_file = get_resource_path("app_icon.ico")
@@ -83,6 +118,8 @@ class FallDetectionGUI(ctk.CTk):
         self.is_running = False
         self.is_paused = False
         self.cap = None
+        self.video_writer = None          # cv2.VideoWriter for session recording
+        self.video_writer_path = ""       # path of the currently recording file
         self.worker_thread = None
         self.current_frame = None
         self.current_stats = None
@@ -133,363 +170,332 @@ class FallDetectionGUI(ctk.CTk):
             )
 
     def _build_ui(self):
-        """Construct the full modern dark-themed GUI."""
-        # Top-level grid configuration
+        """Construct the clean, card-based dark GUI."""
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(1, weight=1)
+        self._build_header()
+        self._build_sidebar()
+        self._build_main_area()
 
-        # -------------------------------------------------------------
-        # 1. TOP HEADER & ALERT BANNER
-        # -------------------------------------------------------------
-        self.header_frame = ctk.CTkFrame(self, height=65, corner_radius=8)
-        self.header_frame.grid(
-            row=0, column=0, columnspan=2, padx=12, pady=(10, 6), sticky="ew"
-        )
-        self.header_frame.grid_columnconfigure(1, weight=1)
+    # ── Header ──────────────────────────────────────────────────────────────
+    def _build_header(self):
+        hdr = ctk.CTkFrame(self, height=58, corner_radius=10, fg_color=CLR_CARD)
+        hdr.grid(row=0, column=0, columnspan=2, padx=14, pady=(12, 6), sticky="ew")
+        hdr.grid_columnconfigure(1, weight=1)
+        hdr.grid_propagate(False)
 
-        self.title_label = ctk.CTkLabel(
-            self.header_frame,
-            text=" AI Human Fall Detection System",
-            font=ctk.CTkFont(size=20, weight="bold"),
-        )
-        self.title_label.grid(row=0, column=0, padx=16, pady=12, sticky="w")
+        ctk.CTkLabel(
+            hdr,
+            text=f"  ◈  {APP_NAME}",
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+            text_color=CLR_TEXT,
+        ).grid(row=0, column=0, padx=18, pady=0, sticky="w")
 
-        # Dynamic Status Banner
-        self.status_banner = ctk.CTkFrame(
-            self.header_frame, height=42, corner_radius=6, fg_color="#1b4332"
+        ctk.CTkLabel(
+            hdr,
+            text="Powered by YOLOv8-Pose",
+            font=ctk.CTkFont(size=11),
+            text_color=CLR_MUTED,
+        ).grid(row=0, column=1, padx=0, pady=0, sticky="w")
+
+        # Status pill (compact)
+        self.status_pill = ctk.CTkFrame(hdr, corner_radius=20, fg_color=CLR_GREEN_BG)
+        self.status_pill.grid(row=0, column=2, padx=16, pady=10, sticky="e")
+
+        self.status_dot = ctk.CTkLabel(
+            self.status_pill, text="●", font=ctk.CTkFont(size=13),
+            text_color=CLR_GREEN, width=20,
         )
-        self.status_banner.grid(
-            row=0, column=1, padx=16, pady=8, sticky="ew"
-        )
+        self.status_dot.pack(side="left", padx=(10, 2), pady=6)
 
         self.status_text = ctk.CTkLabel(
-            self.status_banner,
-            text="🟢 STATUS: SYSTEM READY - STANDBY",
-            font=ctk.CTkFont(size=14, weight="bold"),
-            text_color="#d8f3dc",
+            self.status_pill,
+            text="Ready",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=CLR_GREEN,
         )
-        self.status_text.pack(expand=True, fill="both", padx=10, pady=4)
+        self.status_text.pack(side="left", padx=(0, 14), pady=6)
 
-        # -------------------------------------------------------------
-        # 2. LEFT CONTROL SIDEBAR
-        # -------------------------------------------------------------
+    # ── Left Sidebar ────────────────────────────────────────────────────────
+    def _build_sidebar(self):
         self.sidebar = ctk.CTkScrollableFrame(
-            self, width=320, corner_radius=8, label_text="⚙️ System Controls"
+            self, width=300, corner_radius=10,
+            fg_color=CLR_CARD,
+            scrollbar_button_color=CLR_BORDER,
+            scrollbar_button_hover_color=CLR_ACCENT,
+            label_text="",
         )
-        self.sidebar.grid(
-            row=1, column=0, padx=(12, 6), pady=6, sticky="nsew"
-        )
+        self.sidebar.grid(row=1, column=0, padx=(14, 6), pady=(0, 14), sticky="nsew")
 
-        # --- Input Source Group ---
-        self.src_label = ctk.CTkLabel(
-            self.sidebar,
-            text="🎥 Video Input Source",
-            font=ctk.CTkFont(size=14, weight="bold"),
+        # ── Input Source
+        _section_label(self.sidebar, "VIDEO INPUT SOURCE").pack(
+            anchor="w", padx=14, pady=(16, 6)
         )
-        self.src_label.pack(anchor="w", padx=10, pady=(8, 4))
-
-        self.source_mode = ctk.StringVar(value="webcam")
         self.source_segmented = ctk.CTkSegmentedButton(
             self.sidebar,
-            values=["Webcam", "Video File", "RTSP Stream"],
+            values=["Webcam", "Video File", "RTSP"],
             command=self._on_source_mode_changed,
+            font=ctk.CTkFont(size=12),
+            selected_color=CLR_ACCENT,
+            selected_hover_color=CLR_ACCENT2,
+            unselected_color=CLR_CARD2,
+            unselected_hover_color=CLR_BORDER,
         )
         self.source_segmented.set("Webcam")
-        self.source_segmented.pack(fill="x", padx=10, pady=4)
+        self.source_segmented.pack(fill="x", padx=14, pady=(0, 8))
 
-        # Container for dynamic source inputs
-        self.source_container = ctk.CTkFrame(
-            self.sidebar, fg_color="transparent"
-        )
-        self.source_container.pack(fill="x", padx=10, pady=4)
+        self.source_container = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.source_container.pack(fill="x", padx=14, pady=(0, 4))
 
-        # Sub-frame: Webcam
-        self.webcam_frame = ctk.CTkFrame(
-            self.source_container, fg_color="transparent"
-        )
-        self.cam_idx_label = ctk.CTkLabel(
-            self.webcam_frame, text="Camera Device Index:"
-        )
-        self.cam_idx_label.pack(side="left", padx=4)
+        # Webcam sub-frame
+        self.webcam_frame = ctk.CTkFrame(self.source_container, fg_color=CLR_CARD2, corner_radius=8)
+        cam_row = ctk.CTkFrame(self.webcam_frame, fg_color="transparent")
+        cam_row.pack(fill="x", padx=10, pady=8)
+        ctk.CTkLabel(cam_row, text="Camera Index", font=ctk.CTkFont(size=12), text_color=CLR_MUTED).pack(side="left")
         self.cam_idx_combo = ctk.CTkComboBox(
-            self.webcam_frame,
-            values=["0 (Default)", "1", "2", "3"],
-            width=110,
+            cam_row, values=["0 (Default)", "1", "2", "3"], width=120,
+            fg_color=CLR_CARD, border_color=CLR_BORDER, button_color=CLR_ACCENT,
         )
         self.cam_idx_combo.set("0 (Default)")
-        self.cam_idx_combo.pack(side="right", padx=4)
+        self.cam_idx_combo.pack(side="right")
         self.webcam_frame.pack(fill="x", pady=2)
 
-        # Sub-frame: File
-        self.file_frame = ctk.CTkFrame(
-            self.source_container, fg_color="transparent"
-        )
+        # File sub-frame
+        self.file_frame = ctk.CTkFrame(self.source_container, fg_color=CLR_CARD2, corner_radius=8)
+        file_row = ctk.CTkFrame(self.file_frame, fg_color="transparent")
+        file_row.pack(fill="x", padx=10, pady=8)
         self.file_path_entry = ctk.CTkEntry(
-            self.file_frame, placeholder_text="Select video file..."
+            file_row, placeholder_text="Select video file...",
+            fg_color=CLR_CARD, border_color=CLR_BORDER,
         )
-        self.file_path_entry.pack(side="left", fill="x", expand=True, padx=4)
+        self.file_path_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
         self.browse_btn = ctk.CTkButton(
-            self.file_frame,
-            text="Browse",
-            width=70,
-            command=self._browse_video_file,
+            file_row, text="Browse", width=72, height=28,
+            fg_color=CLR_ACCENT, hover_color=CLR_ACCENT2,
+            font=ctk.CTkFont(size=12), command=self._browse_video_file,
         )
-        self.browse_btn.pack(side="right", padx=4)
+        self.browse_btn.pack(side="right")
 
-        # Sub-frame: RTSP
-        self.rtsp_frame = ctk.CTkFrame(
-            self.source_container, fg_color="transparent"
-        )
+        # RTSP sub-frame
+        self.rtsp_frame = ctk.CTkFrame(self.source_container, fg_color=CLR_CARD2, corner_radius=8)
         self.rtsp_entry = ctk.CTkEntry(
             self.rtsp_frame,
-            placeholder_text="rtsp://admin:pass@192.168.1.100:554/live",
+            placeholder_text="rtsp://[IP_ADDRESS]/live",
+            fg_color=CLR_CARD, border_color=CLR_BORDER,
         )
-        self.rtsp_entry.pack(fill="x", padx=4, pady=2)
+        self.rtsp_entry.pack(fill="x", padx=10, pady=8)
 
-        # --- Stream Control Buttons ---
-        self.btn_container = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        self.btn_container.pack(fill="x", padx=10, pady=(12, 6))
+        # ── Stream Controls
+        _divider(self.sidebar).pack(fill="x", padx=14, pady=(14, 0))
+        _section_label(self.sidebar, "STREAM CONTROLS").pack(anchor="w", padx=14, pady=(10, 8))
+
+        btn_cfg = dict(font=ctk.CTkFont(size=13, weight="bold"), height=36, corner_radius=8)
 
         self.start_btn = ctk.CTkButton(
-            self.btn_container,
-            text="▶ Start Detection",
-            fg_color="#2b9348",
-            hover_color="#1b4332",
-            font=ctk.CTkFont(weight="bold"),
-            command=self.start_stream,
+            self.sidebar, text="▶  Start Detection",
+            fg_color=CLR_GREEN, hover_color="#1d7a49",
+            command=self.start_stream, **btn_cfg,
         )
-        self.start_btn.pack(fill="x", pady=4)
+        self.start_btn.pack(fill="x", padx=14, pady=(0, 6))
 
         self.pause_btn = ctk.CTkButton(
-            self.btn_container,
-            text="⏸ Pause / Resume",
-            fg_color="#3a86ff",
-            hover_color="#265df2",
-            state="disabled",
-            command=self.toggle_pause,
+            self.sidebar, text="⏸  Pause",
+            fg_color=CLR_AMBER, hover_color="#b07800",
+            state="disabled", command=self.toggle_pause, **btn_cfg,
         )
-        self.pause_btn.pack(fill="x", pady=4)
+        self.pause_btn.pack(fill="x", padx=14, pady=(0, 6))
 
         self.stop_btn = ctk.CTkButton(
-            self.btn_container,
-            text="⏹ Stop Stream",
-            fg_color="#d90429",
-            hover_color="#9a031e",
-            state="disabled",
-            command=self.stop_stream,
+            self.sidebar, text="⏹  Stop",
+            fg_color=CLR_RED, hover_color="#a82323",
+            state="disabled", command=self.stop_stream, **btn_cfg,
         )
-        self.stop_btn.pack(fill="x", pady=4)
+        self.stop_btn.pack(fill="x", padx=14, pady=(0, 6))
 
         self.snapshot_btn = ctk.CTkButton(
-            self.btn_container,
-            text="📸 Capture Snapshot",
-            fg_color="#6c757d",
-            hover_color="#495057",
-            command=self.manual_snapshot,
+            self.sidebar, text="📸  Capture Snapshot",
+            fg_color=CLR_CARD2, hover_color=CLR_BORDER, text_color=CLR_TEXT,
+            command=self.manual_snapshot, **btn_cfg,
         )
-        self.snapshot_btn.pack(fill="x", pady=4)
+        self.snapshot_btn.pack(fill="x", padx=14, pady=(0, 4))
 
-        # --- Detection Parameters Group ---
-        self.param_label = ctk.CTkLabel(
-            self.sidebar,
-            text="🎛️ Detection Thresholds",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        )
-        self.param_label.pack(anchor="w", padx=10, pady=(12, 4))
+        # ── Detection Thresholds
+        _divider(self.sidebar).pack(fill="x", padx=14, pady=(14, 0))
+        _section_label(self.sidebar, "DETECTION THRESHOLDS").pack(anchor="w", padx=14, pady=(10, 4))
 
-        # Velocity Threshold Slider
-        self.v_label = ctk.CTkLabel(
-            self.sidebar, text="Descent Velocity Thresh (v): 55 px/s"
+        self._add_slider(
+            "Descent Velocity (v)", "px/s",
+            "v_slider", "v_label", from_=15, to=120, steps=105, init=55,
         )
-        self.v_label.pack(anchor="w", padx=10, pady=(2, 0))
-        self.v_slider = ctk.CTkSlider(
-            self.sidebar,
-            from_=15,
-            to=120,
-            number_of_steps=105,
-            command=self._on_param_changed,
+        self._add_slider(
+            "Vertical Drop (Δy)", "px",
+            "dy_slider", "dy_label", from_=5, to=60, steps=55, init=18,
         )
-        self.v_slider.set(55)
-        self.v_slider.pack(fill="x", padx=10, pady=(0, 6))
+        self._add_slider(
+            "Aspect Ratio (ΔAR)", "",
+            "ar_slider", "ar_label", from_=0.10, to=0.80, steps=70, init=0.35, fmt="{:.2f}",
+        )
+        self._add_slider(
+            "Pose Confidence", "",
+            "conf_slider", "conf_label", from_=0.15, to=0.90, steps=75, init=0.35, fmt="{:.2f}",
+        )
+        self._add_slider(
+            "Temporal Window", "frames",
+            "win_slider", "win_label", from_=5, to=40, steps=35, init=15, fmt="{:.0f}",
+        )
 
-        # Vertical Displacement Slider (dy)
-        self.dy_label = ctk.CTkLabel(
-            self.sidebar, text="Vertical Drop Thresh (Δy): 18 px"
-        )
-        self.dy_label.pack(anchor="w", padx=10, pady=(2, 0))
-        self.dy_slider = ctk.CTkSlider(
-            self.sidebar,
-            from_=5,
-            to=60,
-            number_of_steps=55,
-            command=self._on_param_changed,
-        )
-        self.dy_slider.set(18)
-        self.dy_slider.pack(fill="x", padx=10, pady=(0, 6))
-
-        # Aspect Ratio Delta Slider
-        self.ar_label = ctk.CTkLabel(
-            self.sidebar, text="Aspect Ratio Delta (ΔAR): 0.35"
-        )
-        self.ar_label.pack(anchor="w", padx=10, pady=(2, 0))
-        self.ar_slider = ctk.CTkSlider(
-            self.sidebar,
-            from_=0.10,
-            to=0.80,
-            number_of_steps=70,
-            command=self._on_param_changed,
-        )
-        self.ar_slider.set(0.35)
-        self.ar_slider.pack(fill="x", padx=10, pady=(0, 6))
-
-        # Confidence Slider
-        self.conf_label = ctk.CTkLabel(
-            self.sidebar, text="Pose Confidence Thresh: 0.35"
-        )
-        self.conf_label.pack(anchor="w", padx=10, pady=(2, 0))
-        self.conf_slider = ctk.CTkSlider(
-            self.sidebar,
-            from_=0.15,
-            to=0.90,
-            number_of_steps=75,
-            command=self._on_param_changed,
-        )
-        self.conf_slider.set(0.35)
-        self.conf_slider.pack(fill="x", padx=10, pady=(0, 6))
-
-        # Temporal Window Size Slider
-        self.win_label = ctk.CTkLabel(
-            self.sidebar, text="Temporal Window: 15 frames"
-        )
-        self.win_label.pack(anchor="w", padx=10, pady=(2, 0))
-        self.win_slider = ctk.CTkSlider(
-            self.sidebar,
-            from_=5,
-            to=40,
-            number_of_steps=35,
-            command=self._on_param_changed,
-        )
-        self.win_slider.set(15)
-        self.win_slider.pack(fill="x", padx=10, pady=(0, 6))
-
-        # --- Alerts & Notifications Group ---
-        self.alert_grp_label = ctk.CTkLabel(
-            self.sidebar,
-            text="🔔 Alert Preferences",
-            font=ctk.CTkFont(size=14, weight="bold"),
-        )
-        self.alert_grp_label.pack(anchor="w", padx=10, pady=(12, 4))
+        # ── Alert Preferences
+        _divider(self.sidebar).pack(fill="x", padx=14, pady=(14, 0))
+        _section_label(self.sidebar, "ALERT PREFERENCES").pack(anchor="w", padx=14, pady=(10, 6))
 
         self.audio_alert_var = ctk.BooleanVar(value=True)
-        self.audio_alert_cb = ctk.CTkCheckBox(
-            self.sidebar,
-            text="Enable Audio Alarm Beep",
+        ctk.CTkCheckBox(
+            self.sidebar, text="Audio Alarm on Fall",
             variable=self.audio_alert_var,
-        )
-        self.audio_alert_cb.pack(anchor="w", padx=10, pady=4)
+            checkbox_width=18, checkbox_height=18,
+            fg_color=CLR_ACCENT, hover_color=CLR_ACCENT2,
+            font=ctk.CTkFont(size=12),
+        ).pack(anchor="w", padx=14, pady=(0, 6))
 
         self.auto_snap_var = ctk.BooleanVar(value=True)
-        self.auto_snap_cb = ctk.CTkCheckBox(
-            self.sidebar,
-            text="Auto-Save Fall Snapshots",
+        ctk.CTkCheckBox(
+            self.sidebar, text="Auto-Save Fall Snapshots",
             variable=self.auto_snap_var,
-        )
-        self.auto_snap_cb.pack(anchor="w", padx=10, pady=4)
+            checkbox_width=18, checkbox_height=18,
+            fg_color=CLR_ACCENT, hover_color=CLR_ACCENT2,
+            font=ctk.CTkFont(size=12),
+        ).pack(anchor="w", padx=14, pady=(0, 6))
 
-        # -------------------------------------------------------------
-        # 3. RIGHT MAIN DISPLAY & LOGS
-        # -------------------------------------------------------------
-        self.main_frame = ctk.CTkFrame(self, corner_radius=8)
-        self.main_frame.grid(
-            row=1, column=1, padx=(6, 12), pady=6, sticky="nsew"
+        # ── Snapshot save folder
+        snap_row = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        snap_row.pack(fill="x", padx=14, pady=(4, 14))
+        ctk.CTkLabel(
+            snap_row, text="Save folder",
+            font=ctk.CTkFont(size=12), text_color=CLR_MUTED,
+        ).pack(side="left")
+        ctk.CTkButton(
+            snap_row, text="Browse", width=60, height=24,
+            fg_color=CLR_BORDER, hover_color=CLR_CARD2, text_color=CLR_TEXT,
+            font=ctk.CTkFont(size=11), corner_radius=6,
+            command=self._browse_snapshot_dir,
+        ).pack(side="right", padx=(6, 0))
+
+        snap_entry_row = ctk.CTkFrame(self.sidebar, fg_color=CLR_CARD2, corner_radius=8)
+        snap_entry_row.pack(fill="x", padx=14, pady=(0, 14))
+        _default_snap_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "fall_snapshots"
         )
+        self.snap_dir_entry = ctk.CTkEntry(
+            snap_entry_row,
+            placeholder_text=_default_snap_dir,
+            fg_color="transparent", border_width=0,
+            font=ctk.CTkFont(size=11), text_color=CLR_TEXT,
+        )
+        self.snap_dir_entry.insert(0, _default_snap_dir)
+        self.snap_dir_entry.pack(fill="x", padx=8, pady=6)
+
+    def _add_slider(self, label: str, unit: str, slider_attr: str, lbl_attr: str,
+                    from_, to, steps, init, fmt="{:.1f}"):
+        """Compact threshold row: label left, small entry right (no big slider)."""
+        if not hasattr(self, "_thresh_grid"):
+            # Create the grid container once on first call
+            self._thresh_grid = ctk.CTkFrame(self.sidebar, fg_color=CLR_CARD2, corner_radius=8)
+            self._thresh_grid.pack(fill="x", padx=14, pady=(0, 4))
+            self._thresh_row_idx = 0
+            self._thresh_grid.grid_columnconfigure(1, weight=1)
+            self._thresh_grid.grid_columnconfigure(3, weight=1)
+
+        r = self._thresh_row_idx // 2  # grid row
+        c = (self._thresh_row_idx % 2) * 2  # col 0 or 2
+
+        ctk.CTkLabel(
+            self._thresh_grid, text=label,
+            font=ctk.CTkFont(size=11), text_color=CLR_MUTED, anchor="w",
+        ).grid(row=r * 2, column=c, columnspan=2, sticky="w", padx=(10, 4), pady=(6, 0))
+
+        entry = ctk.CTkEntry(
+            self._thresh_grid,
+            width=80, height=26,
+            fg_color=CLR_CARD, border_color=CLR_BORDER,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            justify="center",
+        )
+        entry.insert(0, fmt.format(init))
+        entry.grid(row=r * 2 + 1, column=c, columnspan=2, padx=(10, 4), pady=(2, 8), sticky="ew")
+
+        # bind on focus-out to apply changes
+        entry.bind("<FocusOut>", lambda e: self._on_param_changed())
+        entry.bind("<Return>",   lambda e: self._on_param_changed())
+
+        setattr(self, lbl_attr, entry)   # reuse lbl_attr to store the entry widget
+        setattr(self, slider_attr, entry)  # slider_attr also points to same entry
+        self._thresh_row_idx += 1
+
+    # ── Main Content Area ────────────────────────────────────────────────────
+    def _build_main_area(self):
+        self.main_frame = ctk.CTkFrame(self, corner_radius=10, fg_color=CLR_CARD)
+        self.main_frame.grid(row=1, column=1, padx=(0, 14), pady=(0, 14), sticky="nsew")
         self.main_frame.grid_rowconfigure(1, weight=1)
         self.main_frame.grid_columnconfigure(0, weight=1)
 
-        # --- KPI Metrics Bar ---
-        self.kpi_frame = ctk.CTkFrame(
-            self.main_frame, height=45, corner_radius=6
-        )
-        self.kpi_frame.grid(
-            row=0, column=0, padx=10, pady=(10, 4), sticky="ew"
-        )
-        self.kpi_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        # ── KPI bar
+        kpi = ctk.CTkFrame(self.main_frame, height=52, corner_radius=8, fg_color=CLR_CARD2)
+        kpi.grid(row=0, column=0, padx=12, pady=(12, 6), sticky="ew")
+        kpi.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        kpi.grid_propagate(False)
 
-        self.kpi_fps = ctk.CTkLabel(
-            self.kpi_frame,
-            text="⚡ FPS: 0.0",
-            font=ctk.CTkFont(size=13, weight="bold"),
-        )
-        self.kpi_fps.grid(row=0, column=0, padx=8, pady=8)
+        def _kpi_cell(col, icon, label, color=CLR_TEXT):
+            f = ctk.CTkFrame(kpi, fg_color="transparent")
+            f.grid(row=0, column=col, padx=8, pady=6, sticky="nsew")
+            ctk.CTkLabel(f, text=icon, font=ctk.CTkFont(size=16)).pack(side="left", padx=(4, 4))
+            lbl = ctk.CTkLabel(f, text=label, font=ctk.CTkFont(size=12, weight="bold"), text_color=color)
+            lbl.pack(side="left")
+            return lbl
 
-        self.kpi_persons = ctk.CTkLabel(
-            self.kpi_frame,
-            text="👥 Persons Detected: 0",
-            font=ctk.CTkFont(size=13, weight="bold"),
-        )
-        self.kpi_persons.grid(row=0, column=1, padx=8, pady=8)
+        self.kpi_fps      = _kpi_cell(0, "⚡", "FPS: 0.0")
+        self.kpi_persons  = _kpi_cell(1, "👤", "Persons: 0")
+        self.kpi_incidents = _kpi_cell(2, "🚨", "Incidents: 0", color="#ff6b6b")
+        device_str = self.detector.device.upper() if self.detector else "CPU"
+        self.kpi_device   = _kpi_cell(3, "💻", f"Engine: {device_str}", color=CLR_MUTED)
 
-        self.kpi_incidents = ctk.CTkLabel(
-            self.kpi_frame,
-            text="🚨 Total Incidents: 0",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color="#ff4d6d",
-        )
-        self.kpi_incidents.grid(row=0, column=2, padx=8, pady=8)
-
-        self.kpi_device = ctk.CTkLabel(
-            self.kpi_frame,
-            text=f"💻 Engine: {self.detector.device.upper() if self.detector else 'CPU'}",
-            font=ctk.CTkFont(size=13, weight="bold"),
-        )
-        self.kpi_device.grid(row=0, column=3, padx=8, pady=8)
-
-        # --- Video Canvas Viewport ---
+        # ── Video canvas
         self.video_canvas = tk.Canvas(
-            self.main_frame, bg="#0d1117", highlightthickness=0
+            self.main_frame, bg="#0a0c12", highlightthickness=0,
         )
-        self.video_canvas.grid(
-            row=1, column=0, padx=10, pady=4, sticky="nsew"
-        )
+        self.video_canvas.grid(row=1, column=0, padx=12, pady=(0, 6), sticky="nsew")
+        self._show_placeholder_canvas("No feed  ·  Click ▶ Start Detection")
 
-        # Default placeholder image on canvas
-        self._show_placeholder_canvas("Camera Feed Standby\nClick '▶ Start Detection' to begin")
+        # ── Incident Log card
+        log_card = ctk.CTkFrame(self.main_frame, corner_radius=8, fg_color=CLR_CARD2, height=130)
+        log_card.grid(row=2, column=0, padx=12, pady=(0, 12), sticky="ew")
+        log_card.grid_columnconfigure(0, weight=1)
+        log_card.grid_propagate(False)
 
-        # --- Incident Event Log Drawer ---
-        self.log_frame = ctk.CTkFrame(
-            self.main_frame, height=140, corner_radius=6
-        )
-        self.log_frame.grid(
-            row=2, column=0, padx=10, pady=(4, 10), sticky="ew"
-        )
-        self.log_frame.grid_columnconfigure(0, weight=1)
+        log_hdr = ctk.CTkFrame(log_card, fg_color="transparent")
+        log_hdr.grid(row=0, column=0, padx=10, pady=(6, 2), sticky="ew")
 
-        self.log_header = ctk.CTkFrame(self.log_frame, fg_color="transparent")
-        self.log_header.pack(fill="x", padx=8, pady=(4, 2))
+        ctk.CTkLabel(
+            log_hdr, text="Incident Log",
+            font=ctk.CTkFont(size=12, weight="bold"), text_color=CLR_TEXT,
+        ).pack(side="left")
 
-        self.log_title = ctk.CTkLabel(
-            self.log_header,
-            text="📋 Real-Time Incident Audit Log",
-            font=ctk.CTkFont(size=12, weight="bold"),
-        )
-        self.log_title.pack(side="left")
-
-        self.clear_log_btn = ctk.CTkButton(
-            self.log_header,
-            text="Clear",
-            width=50,
-            height=24,
+        ctk.CTkButton(
+            log_hdr, text="Clear", width=54, height=24,
+            fg_color=CLR_BORDER, hover_color=CLR_CARD, text_color=CLR_MUTED,
+            font=ctk.CTkFont(size=11), corner_radius=6,
             command=self.clear_logs,
-        )
-        self.clear_log_btn.pack(side="right", padx=4)
+        ).pack(side="right")
 
         self.log_textbox = ctk.CTkTextbox(
-            self.log_frame, height=90, font=ctk.CTkFont(family="Consolas", size=11)
+            log_card, height=78,
+            font=ctk.CTkFont(family="Consolas", size=11),
+            fg_color="transparent", text_color=CLR_MUTED,
+            border_width=0,
         )
-        self.log_textbox.pack(fill="both", expand=True, padx=8, pady=(0, 6))
+        self.log_textbox.grid(row=1, column=0, padx=10, pady=(0, 8), sticky="ew")
         self.log_textbox.insert(
             "end",
-            f"[{time.strftime('%H:%M:%S')}] System initialized. YOLOv8 Pose engine ready.\n",
+            f"[{time.strftime('%H:%M:%S')}] System initialized — YOLOv8 Pose engine ready.\n",
         )
 
     # -------------------------------------------------------------
@@ -505,7 +511,7 @@ class FallDetectionGUI(ctk.CTk):
             self.webcam_frame.pack(fill="x", pady=2)
         elif mode == "Video File":
             self.file_frame.pack(fill="x", pady=2)
-        elif mode == "RTSP Stream":
+        elif mode == "RTSP":
             self.rtsp_frame.pack(fill="x", pady=2)
 
     def _browse_video_file(self):
@@ -521,19 +527,31 @@ class FallDetectionGUI(ctk.CTk):
             self.file_path_entry.delete(0, "end")
             self.file_path_entry.insert(0, filename)
 
-    def _on_param_changed(self, _=None):
-        """Sync slider values to detector thresholds."""
-        v = round(self.v_slider.get(), 1)
-        dy = round(self.dy_slider.get(), 1)
-        ar = round(self.ar_slider.get(), 2)
-        conf = round(self.conf_slider.get(), 2)
-        win = int(self.win_slider.get())
+    def _browse_snapshot_dir(self):
+        """Open directory dialog to pick the auto-save folder."""
+        folder = filedialog.askdirectory(title="Select Snapshot Save Folder")
+        if folder:
+            self.snap_dir_entry.delete(0, "end")
+            self.snap_dir_entry.insert(0, folder)
 
-        self.v_label.configure(text=f"Descent Velocity Thresh (v): {v} px/s")
-        self.dy_label.configure(text=f"Vertical Drop Thresh (Δy): {dy} px")
-        self.ar_label.configure(text=f"Aspect Ratio Delta (ΔAR): {ar:.2f}")
-        self.conf_label.configure(text=f"Pose Confidence Thresh: {conf:.2f}")
-        self.win_label.configure(text=f"Temporal Window: {win} frames")
+    def _get_snapshot_dir(self) -> str | None:
+        """Return user-chosen snapshot folder, or None to use the default."""
+        val = self.snap_dir_entry.get().strip()
+        return val if val else None
+
+    def _on_param_changed(self, _=None):
+        """Read entry values and sync to detector thresholds."""
+        def _safe(entry, default, cast=float):
+            try:
+                return cast(entry.get())
+            except (ValueError, AttributeError):
+                return default
+
+        v    = _safe(self.v_slider,    55.0)
+        dy   = _safe(self.dy_slider,   18.0)
+        ar   = _safe(self.ar_slider,   0.35)
+        conf = _safe(self.conf_slider, 0.35)
+        win  = _safe(self.win_slider,  15,   cast=int)
 
         if self.detector:
             self.detector.set_parameters(
@@ -559,13 +577,25 @@ class FallDetectionGUI(ctk.CTk):
         w = max(100, self.video_canvas.winfo_width())
         h = max(100, self.video_canvas.winfo_height())
         self.video_canvas.create_text(
-            w // 2,
-            h // 2,
-            text=message,
-            fill="#6c757d",
-            font=("Segoe UI", 16, "bold"),
+            w // 2, h // 2 - 14,
+            text="◈",
+            fill=CLR_BORDER,
+            font=("Segoe UI", 36),
             justify="center",
         )
+        self.video_canvas.create_text(
+            w // 2, h // 2 + 28,
+            text=message,
+            fill=CLR_MUTED,
+            font=("Segoe UI", 13),
+            justify="center",
+        )
+
+    # ── Status Pill Helpers ──────────────────────────────────────────────────
+    def _set_status(self, text: str, dot_color: str, bg_color: str, text_color: str):
+        self.status_pill.configure(fg_color=bg_color)
+        self.status_dot.configure(text_color=dot_color)
+        self.status_text.configure(text=text, text_color=text_color)
 
     # -------------------------------------------------------------
     # Stream Lifecycle Management
@@ -612,25 +642,47 @@ class FallDetectionGUI(ctk.CTk):
             return
 
         self.is_running = True
-        self.is_paused = False
+        self.is_paused  = False
 
-        # Update Button States
+        # ── Start session video recorder ─────────────────────────────
+        try:
+            rec_dir = self._get_snapshot_dir() or os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "fall_snapshots"
+            )
+            os.makedirs(rec_dir, exist_ok=True)
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            self.video_writer_path = os.path.join(rec_dir, f"session_{ts}.mp4")
+
+            src_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))  or 1280
+            src_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 720
+            src_fps = self.cap.get(cv2.CAP_PROP_FPS) or 25.0
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            self.video_writer = cv2.VideoWriter(
+                self.video_writer_path, fourcc, src_fps, (src_w, src_h)
+            )
+            if not self.video_writer.isOpened():
+                self.video_writer = None
+                self.video_writer_path = ""
+                self._log_event("⚠️  Could not open VideoWriter — recording disabled.")
+            else:
+                self._log_event(f"🎥  Recording session → {os.path.basename(self.video_writer_path)}")
+        except Exception as _e:
+            self.video_writer = None
+            self.video_writer_path = ""
+            print(f"[WARN] VideoWriter init failed: {_e}")
+        # ─────────────────────────────────────────────────────────────
+
         self.start_btn.configure(state="disabled")
-        self.pause_btn.configure(state="normal", text="⏸ Pause")
+        self.pause_btn.configure(state="normal", text="⏸  Pause")
         self.stop_btn.configure(state="normal")
 
-        # Update Status Banner
-        self.status_banner.configure(fg_color="#1b4332")
-        self.status_text.configure(
-            text="🟢 STATUS: NORMAL - MONITORING ACTIVE", text_color="#d8f3dc"
-        )
+        self._set_status("Monitoring", CLR_GREEN, CLR_GREEN_BG, CLR_GREEN)
 
-        # Launch Worker Thread
         self.worker_thread = threading.Thread(
             target=self._worker_capture_and_infer, daemon=True
         )
         self.worker_thread.start()
-        self._log_event("▶ Detection stream started successfully.")
+        self._log_event("▶  Detection stream started.")
 
     def toggle_pause(self):
         """Pause or resume the stream."""
@@ -638,16 +690,36 @@ class FallDetectionGUI(ctk.CTk):
             return
         self.is_paused = not self.is_paused
         if self.is_paused:
-            self.pause_btn.configure(text="▶ Resume")
-            self._log_event("⏸ Stream paused.")
+            self.pause_btn.configure(text="▶  Resume")
+            self._set_status("Paused", CLR_AMBER, "#2a2000", CLR_AMBER)
+            self._log_event("⏸  Stream paused.")
         else:
-            self.pause_btn.configure(text="⏸ Pause")
-            self._log_event("▶ Stream resumed.")
+            self.pause_btn.configure(text="⏸  Pause")
+            self._set_status("Monitoring", CLR_GREEN, CLR_GREEN_BG, CLR_GREEN)
+            self._log_event("▶  Stream resumed.")
 
     def stop_stream(self):
-        """Stop stream and clean up resources."""
+        """Stop stream, flush video recording, and clean up resources."""
         self.is_running = False
-        self.is_paused = False
+        self.is_paused  = False
+
+        # Clear the last frame so canvas goes blank, not frozen
+        with self.lock:
+            self.current_frame = None
+            self.current_stats = None
+
+        # ── Finalize video recording ──────────────────────────────────
+        if self.video_writer:
+            try:
+                self.video_writer.release()
+                self._log_event(
+                    f"💾  Session saved → {os.path.basename(self.video_writer_path)}"
+                )
+            except Exception:
+                pass
+            self.video_writer = None
+            self.video_writer_path = ""
+        # ─────────────────────────────────────────────────────────────
 
         if self.cap:
             try:
@@ -657,25 +729,23 @@ class FallDetectionGUI(ctk.CTk):
             self.cap = None
 
         self.start_btn.configure(state="normal")
-        self.pause_btn.configure(state="disabled", text="⏸ Pause")
+        self.pause_btn.configure(state="disabled", text="⏸  Pause")
         self.stop_btn.configure(state="disabled")
 
-        self.status_banner.configure(fg_color="#1b4332")
-        self.status_text.configure(
-            text="🟢 STATUS: SYSTEM READY - STANDBY", text_color="#d8f3dc"
-        )
-        self.kpi_fps.configure(text="⚡ FPS: 0.0")
-        self.kpi_persons.configure(text="👥 Persons Detected: 0")
+        self._set_status("Ready", CLR_GREEN, CLR_GREEN_BG, CLR_GREEN)
+        self.kpi_fps.configure(text="FPS: 0.0")
+        self.kpi_persons.configure(text="Persons: 0")
 
-        self._show_placeholder_canvas("Stream Stopped.\nClick '▶ Start Detection' to restart")
-        self._log_event("⏹ Stream stopped.")
+        self._show_placeholder_canvas("Stream stopped  ·  Click ▶ Start Detection")
+        self._log_event("⏹  Stream stopped.")
 
     def manual_snapshot(self):
         """Take a snapshot of the current view."""
         with self.lock:
             if self.current_frame is not None:
                 path = save_fall_snapshot(
-                    self.current_frame, prefix="manual_snap"
+                    self.current_frame, prefix="manual_snap",
+                    save_dir=self._get_snapshot_dir(),
                 )
                 if path:
                     self._log_event(f"📸 Snapshot saved: {os.path.basename(path)}")
@@ -712,6 +782,13 @@ class FallDetectionGUI(ctk.CTk):
                 )
                 prev_time = stats["new_time"]
 
+                # Write annotated frame to session video
+                if self.video_writer:
+                    try:
+                        self.video_writer.write(annotated_frame)
+                    except Exception:
+                        pass
+
                 with self.lock:
                     self.current_frame = annotated_frame
                     self.current_stats = stats
@@ -741,7 +818,8 @@ class FallDetectionGUI(ctk.CTk):
         # Auto-Save Snapshot
         if self.auto_snap_var.get():
             saved_path = save_fall_snapshot(
-                raw_frame, prefix="fall_alert"
+                raw_frame, prefix="fall_alert",
+                save_dir=self._get_snapshot_dir(),
             )
             if saved_path:
                 for event in fall_events:
@@ -772,33 +850,26 @@ class FallDetectionGUI(ctk.CTk):
             if frame is not None:
                 self._render_frame_to_canvas(frame)
 
-            # 2. Update KPI Metrics & Banner
+            # 2. Update KPI Metrics
             if stats is not None and self.is_running:
-                self.kpi_fps.configure(text=f"⚡ FPS: {stats['fps']:.1f}")
-                self.kpi_persons.configure(
-                    text=f"👥 Persons Detected: {stats['active_persons']}"
-                )
+                self.kpi_fps.configure(text=f"FPS: {stats['fps']:.1f}")
+                self.kpi_persons.configure(text=f"Persons: {stats['active_persons']}")
                 self.kpi_incidents.configure(
-                    text=f"🚨 Incidents: {self.detector.total_fall_incidents}"
+                    text=f"Incidents: {self.detector.total_fall_incidents}"
                 )
 
-            # 3. Dynamic Alert Banner Flashing
+            # 3. Alert status pill flashing
             now = time.time()
             if self.fall_alert_active and now < self.fall_alert_end_time:
                 self.flash_state = not self.flash_state
-                banner_color = "#d90429" if self.flash_state else "#7f1d1d"
-                self.status_banner.configure(fg_color=banner_color)
-                self.status_text.configure(
-                    text="🚨 CRITICAL ALERT: HUMAN FALL EVENT CONFIRMED!",
-                    text_color="#ffffff",
-                )
-            elif self.is_running:
+                alert_bg  = CLR_RED_BG if self.flash_state else "#1a0505"
+                dot_color = CLR_RED    if self.flash_state else "#a01c1c"
+                self.status_pill.configure(fg_color=alert_bg)
+                self.status_dot.configure(text_color=dot_color)
+                self.status_text.configure(text="FALL DETECTED!", text_color=CLR_RED)
+            elif self.is_running and not self.is_paused:
                 self.fall_alert_active = False
-                self.status_banner.configure(fg_color="#1b4332")
-                self.status_text.configure(
-                    text="🟢 STATUS: NORMAL - MONITORING ACTIVE",
-                    text_color="#d8f3dc",
-                )
+                self._set_status("Monitoring", CLR_GREEN, CLR_GREEN_BG, CLR_GREEN)
 
         except Exception as e:
             pass

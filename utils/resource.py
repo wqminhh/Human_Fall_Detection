@@ -175,7 +175,8 @@ def play_alert_sound(freq: int = 1200, duration_ms: int = 350) -> None:
 
 
 def save_fall_snapshot(
-    frame, prefix: str = "fall_incident", out_dir: str = "fall_snapshots"
+    frame, prefix: str = "fall_incident", out_dir: str = "fall_snapshots",
+    save_dir: str | None = None,
 ) -> str:
     """
     Save an annotated frame as a high-resolution incident snapshot.
@@ -183,7 +184,8 @@ def save_fall_snapshot(
     Args:
         frame: OpenCV BGR image matrix
         prefix (str): Prefix name for output file
-        out_dir (str): Destination folder
+        out_dir (str): Default destination folder
+        save_dir (str | None): Override destination folder (takes priority over out_dir)
 
     Returns:
         str: Absolute path to the saved image file, or empty string on error.
@@ -192,11 +194,12 @@ def save_fall_snapshot(
         import time
         import cv2
 
-        os.makedirs(out_dir, exist_ok=True)
+        target_dir = save_dir if save_dir else out_dir
+        os.makedirs(target_dir, exist_ok=True)
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         ms = int(time.time() * 1000) % 1000
         filename = f"{prefix}_{timestamp}_{ms}.jpg"
-        filepath = os.path.abspath(os.path.join(out_dir, filename))
+        filepath = os.path.abspath(os.path.join(target_dir, filename))
         cv2.imwrite(filepath, frame)
         return filepath
     except Exception as e:

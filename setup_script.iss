@@ -1,9 +1,9 @@
 ; Inno Setup Script for AI Human Fall Detection System
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
-#define MyAppName "AI Human Fall Detection System"
-#define MyAppVersion "1.0.0"
-#define MyAppPublisher "AI Computer Vision Solutions"
+#define MyAppName "Human Fall Detection System"
+#define MyAppVersion "1.1.0"
+#define MyAppPublisher "wqminhh"
 #define MyAppExeName "FallDetectionApp.exe"
 #define MyAppAssocName MyAppName + " File"
 #define MyAppAssocExt ".myp"
@@ -12,17 +12,19 @@
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
 ; Do not use the same AppId value in installers for other applications.
-AppId={{E6B4F819-2091-4C53-A7DC-97A0A9C1284E}
+; Use a new GUID for each released version if you want Windows to treat it as a new installation record.
+AppId={{A41B9A70-25E5-4F70-A26A-7C849D4B6209}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+AppVerName={#MyAppName} {#MyAppVersion}
 DefaultDirName={autopf}\FallDetectionApp
 UninstallDisplayIcon={app}\{#MyAppExeName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 ; Output setup file settings
 OutputDir=dist
-OutputBaseFilename=FallDetectionApp_Setup_v1.0
+OutputBaseFilename=FallDetectionApp_Setup_v{#MyAppVersion}
 SetupIconFile=app_icon.ico
 SolidCompression=yes
 Compression=lzma2/ultra64
